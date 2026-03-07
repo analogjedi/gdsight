@@ -1,59 +1,138 @@
 # GDSight
 
-Interactive SKY130 GDSII inspection in the browser, with real 3D GLB exports and Quest-oriented interaction patterns.
+Immersive 3D layout inspection for GDSII-based IC designs, starting with real SKY130 analog IP in the browser and aiming toward Meta Quest / WebXR.
 
-This repository now contains a Phase 0 browser viewer driven by real SKY130 GDSII data from Christoph Weiser's `sky130_cw_ip` project.
+![GDSight regulator viewer](docs/images/gdsight-regulator-viewer.png)
 
-## Data source
+## Overview
 
-- `external/sky130_cw_ip/` is a local clone of the public repo
-- `data/design.gds` is the decompressed design GDS used for export
-- `scripts/export_sky130_demo.py` converts selected existing GDS cells into browser-friendly JSON
-- `scripts/export_gds_glb.py` exports selected existing GDS cells to `.glb`
+GDSight turns existing GDSII layout data into navigable 3D scenes.
 
-## Run the viewer
+The current prototype uses real SKY130 layout data from Christoph Weiser's `sky130_cw_ip` project, exports selected cells into browser-friendly assets, and renders them with interaction patterns meant to carry forward into XR.
+
+This is not a mock-layout demo. The browser viewer is already driven by existing GDSII files for:
+
+- top-level and sub-block placement overviews
+- bandgap reference
+- LDO regulator
+- bias block
+- SAR comparator
+- SAR DAC
+
+## Current Capabilities
+
+- Real `GDSII -> JSON` export for overview scenes
+- Real `GDSII -> GLB` export for detailed cell views
+- Browser-side 3D viewer with live loading progress
+- Layer explosion control and per-layer visibility
+- Grab-mode navigation inspired by Quest-style world manipulation
+- Orbit mode with local pivot targeting and pointer-focused zoom
+- SKY130 layer stack support for active geometry, poly, local interconnect, metals, and contact/via layers
+
+## Project Layout
+
+- [data/design.gds](data/design.gds): decompressed source GDS used for export
+- [scripts/sky130_common.py](scripts/sky130_common.py): shared SKY130 layer stack and dataset definitions
+- [scripts/export_sky130_demo.py](scripts/export_sky130_demo.py): exports overview/detail JSON datasets for the browser viewer
+- [scripts/export_gds_glb.py](scripts/export_gds_glb.py): exports detailed GLB scenes from existing GDSII cells
+- [viewer/index.html](viewer/index.html): no-build browser viewer entrypoint
+- [viewer/app.js](viewer/app.js): scene loading, controls, UI state, and GLB integration
+- [viewer/serve.py](viewer/serve.py): local dev server for the viewer and generated GLBs
+
+## Quick Start
+
+### 1. Create a virtual environment
+
+```bash
+python3 -m venv venv
+./venv/bin/pip install gdstk numpy mapbox-earcut pygltflib
+```
+
+### 2. Run the browser viewer
 
 ```bash
 python3 viewer/serve.py
 ```
 
-Then open `http://127.0.0.1:8080`.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080).
 
-## Regenerate the browser datasets
+If `8080` is busy:
+
+```bash
+python3 viewer/serve.py 8081
+```
+
+## Regenerating Assets
+
+Export the browser JSON datasets:
 
 ```bash
 ./venv/bin/python scripts/export_sky130_demo.py
 ```
 
-## Export GLB artifacts
-
-Export all configured detail cells:
+Export all configured detail GLBs:
 
 ```bash
 ./venv/bin/python scripts/export_gds_glb.py
 ```
 
-Export one cell:
+Export one detailed cell:
 
 ```bash
 ./venv/bin/python scripts/export_gds_glb.py --slug regulator
 ```
 
-Artifacts are written under `output/glb/`.
+Generated GLBs are written under `output/glb/`.
 
-## What is implemented
+## Data Pipeline
 
-- Top-level and sub-block placement overviews derived from actual GDS references
-- Detailed 3D views for actual `bandgap`, `regulator`, `bias`, `sar__comparator`, and `sar__dac` cells
-- SKY130 layer stack mapping for drawn metal/device layers plus contact/via layers
-- Real `GDSII -> GLB` export for the same detailed SKY130 cells
-- Browser viewer loads detail datasets from `.glb` artifacts with a visible loading progress bar
-- Layer or block visibility toggles
-- Grab-mode interaction intended to approximate Quest-style world manipulation
+```text
+Existing SKY130 GDSII
+  -> layer/process mapping
+  -> selected cell extraction
+  -> 3D extrusion
+  -> JSON overviews + GLB detail assets
+  -> browser viewer today
+  -> Meta Quest / WebXR viewer next
+```
 
-## Current limits
+## Viewer Notes
 
-- The browser export currently covers the main SKY130 visualization stack: drawn layers (`datatype 20`) plus contact/via layers (`datatype 44`)
-- Implant and marker layers outside that core stack are still omitted
-- The overview scenes still use generated JSON placement data; the detailed cell views use GLB
-- The first GLB pass emits non-indexed triangle meshes, so files are larger than they need to be; optimization/compression is the next step
+Overview scenes currently use exported JSON placement data.
+
+Detailed scenes currently use exported GLB assets for:
+
+- `bandgap`
+- `regulator`
+- `bias`
+- `sar-comparator`
+- `sar-dac`
+
+The viewer includes:
+
+- dataset switching between top-level and detailed blocks
+- loading progress feedback for GLB scenes
+- orbit and grab interaction modes
+- dataset metadata, scene stats, and layer toggles
+
+## Current Limits
+
+- The implemented visualization stack is focused on the main SKY130 layers plus core contact/via layers
+- Implant, marker, and non-visual process layers outside the current stack are still omitted
+- Overview scenes are still JSON-backed rather than GLB-backed
+- The first GLB pass emits non-indexed meshes, so file sizes are larger than they should be
+- The XR path is still architectural intent; the current shipped viewer is browser-first
+
+## Roadmap
+
+- Replace overview JSON scenes with GLB exports
+- Add drag-and-drop loading for arbitrary GLB assets
+- Improve scene picking, clipping, and measurement tools
+- Optimize mesh output and add compression
+- Carry the same interaction model into WebXR / Meta Quest
+- Expand beyond the current SKY130 demo cells into larger layouts
+
+## Credits
+
+- SKY130 reference layouts from Christoph Weiser's `sky130_cw_ip`
+- Process inspiration and browser testbed work done in service of a future XR IC layout viewer
