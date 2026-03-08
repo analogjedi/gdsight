@@ -1,4 +1,4 @@
-# GDSight
+# Falcon-GDS
 
 Immersive 3D layout inspection for GDSII-based IC designs, starting with real SKY130 analog IP in the browser and aiming toward Meta Quest / WebXR.
 
