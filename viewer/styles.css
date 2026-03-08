@@ -281,30 +281,47 @@ button:hover {
 .quick-actions {
   position: absolute;
   top: 1.2rem;
-  left: 50%;
+  left: 1.25rem;
+  right: 1.25rem;
   z-index: 3;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.65rem;
   align-items: center;
-  justify-content: center;
-  min-width: min(92vw, 920px);
-  padding: 0.75rem 0.9rem;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
   border-radius: 22px;
   background: rgba(7, 11, 16, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(14px);
-  transform: translateX(-50%);
 }
 
 .quick-actions[hidden] {
   display: none;
 }
 
+.quick-actions-main {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.65rem;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.quick-actions-main::-webkit-scrollbar {
+  display: none;
+}
+
 .quick-action-button {
-  min-width: 9rem;
-  padding: 0.68rem 0.95rem;
+  min-width: 0;
+  padding: 0.68rem 1rem;
   background: rgba(240, 161, 59, 0.1);
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .quick-action-button.is-active {
@@ -330,10 +347,12 @@ button:hover {
 
 .quick-mix {
   position: relative;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .quick-mix-button {
-  min-width: 10.5rem;
+  min-width: 12rem;
 }
 
 .quick-mix-menu {
@@ -344,6 +363,7 @@ button:hover {
   flex-direction: column;
   gap: 0.35rem;
   min-width: 11.5rem;
+  max-width: min(18rem, calc(100vw - 3rem));
   padding: 0.55rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
@@ -414,7 +434,7 @@ button:hover {
 
 .hud {
   position: absolute;
-  top: 1.25rem;
+  top: 1.35rem;
   left: 50%;
   display: flex;
   flex-wrap: wrap;
@@ -427,10 +447,13 @@ button:hover {
   font-size: 0.8rem;
   transform: translateX(-50%);
   z-index: 2;
+  max-width: min(92vw, 1120px);
+  justify-content: center;
+  text-align: center;
 }
 
 .viewport.has-quick-actions .hud {
-  top: 5.2rem;
+  top: 6.7rem;
 }
 
 @keyframes load-slide {
@@ -459,7 +482,9 @@ button:hover {
 
   .quick-actions {
     top: 0.75rem;
-    min-width: calc(100vw - 1.5rem);
+    left: 0.75rem;
+    right: 0.75rem;
+    flex-wrap: wrap;
     padding: 0.7rem;
   }
 
@@ -472,12 +497,17 @@ button:hover {
   }
 
   .quick-action-button {
-    min-width: 0;
     flex: 1 1 9rem;
+  }
+
+  .quick-actions-main {
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .quick-mix {
     width: 100%;
+    margin-left: 0;
   }
 
   .quick-mix-button {
@@ -496,6 +526,6 @@ button:hover {
   }
 
   .viewport.has-quick-actions .hud {
-    top: 10.8rem;
+    top: 12.4rem;
   }
 }
