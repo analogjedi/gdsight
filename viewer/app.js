@@ -41,8 +41,12 @@ const dom = {
   explodeRange: document.querySelector("#explode-range"),
   resetCamera: document.querySelector("#reset-camera"),
   controlHint: document.querySelector("#control-hint"),
+  flyMode: document.querySelector("#fly-mode"),
   grabMode: document.querySelector("#grab-mode"),
   orbitMode: document.querySelector("#orbit-mode"),
+  hudPrimary: document.querySelector("#hud-primary"),
+  hudSecondary: document.querySelector("#hud-secondary"),
+  hudTertiary: document.querySelector("#hud-tertiary"),
 };
 
 const scene = new THREE.Scene();
@@ -63,15 +67,31 @@ controls.minDistance = 8;
 controls.maxDistance = 12000;
 controls.zoomToCursor = true;
 
-const interactionState = { mode: "grab" };
+const interactionState = { mode: "fly" };
 const dragState = { active: false, pointerId: null, lastX: 0, lastY: 0 };
+const flyState = {
+  activeKeys: new Set(),
+  pointerLocked: false,
+  yaw: 0,
+  pitch: -0.38,
+  speed: 80,
+};
+const clock = new THREE.Clock();
+const worldUp = new THREE.Vector3(0, 1, 0);
 const cameraForward = new THREE.Vector3();
 const cameraRight = new THREE.Vector3();
 const cameraUp = new THREE.Vector3();
 const translationDelta = new THREE.Vector3();
+const planarForward = new THREE.Vector3();
+const planarRight = new THREE.Vector3();
+const flyDirection = new THREE.Vector3();
+const lookDirection = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
 const screenCenter = new THREE.Vector2(0, 0);
 const orbitPivot = new THREE.Vector3();
+const lookEuler = new THREE.Euler(0, 0, 0, "YXZ");
+
+const FLY_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "KeyR", "KeyF", "ShiftLeft", "ShiftRight"]);
 
 const ambient = new THREE.HemisphereLight("#dbe6f5", "#07111b", 1.7);
 scene.add(ambient);
@@ -291,26 +311,92 @@ function setLoadProgress(text, fraction = null, options = {}) {
   dom.loadProgressBar.style.width = `${Math.max(0, Math.min(fraction, 1)) * 100}%`;
 }
 
+function updateFlyHud() {
+  if (interactionState.mode === "fly") {
+    dom.hudPrimary.textContent = flyState.pointerLocked ? "Fly: mouse look active" : "Fly: click view to capture mouse";
+    dom.hudSecondary.textContent = "WASD move, arrows or R/F change height, wheel sets speed";
+    dom.hudTertiary.textContent = `Speed ${flyState.speed.toFixed(0)} um/s${flyState.pointerLocked ? " | Esc releases mouse" : ""}`;
+    return;
+  }
+
+  if (interactionState.mode === "grab") {
+    dom.hudPrimary.textContent = "Grab: drag X/Y";
+    dom.hudSecondary.textContent = "Hold Shift while dragging to push or pull depth";
+    dom.hudTertiary.textContent = "Quest path: world grab analogue";
+    return;
+  }
+
+  dom.hudPrimary.textContent = "Orbit: left drag rotates";
+  dom.hudSecondary.textContent = "Right drag pans, wheel zooms toward the pointer";
+  dom.hudTertiary.textContent = "Pivot retargets to the visible hit point";
+}
+
+function syncFlyAnglesFromCamera() {
+  lookEuler.setFromQuaternion(camera.quaternion);
+  flyState.yaw = lookEuler.y;
+  flyState.pitch = THREE.MathUtils.clamp(lookEuler.x, -Math.PI / 2 + 0.02, Math.PI / 2 - 0.02);
+}
+
+function applyFlyLook() {
+  camera.rotation.order = "YXZ";
+  camera.rotation.y = flyState.yaw;
+  camera.rotation.x = flyState.pitch;
+  camera.rotation.z = 0;
+  camera.getWorldDirection(lookDirection);
+  controls.target.copy(camera.position).addScaledVector(lookDirection, 100);
+}
+
+function requestFlyPointerLock() {
+  if (interactionState.mode !== "fly" || document.pointerLockElement === dom.canvas) {
+    return;
+  }
+  dom.canvas.requestPointerLock?.();
+}
+
+function exitFlyPointerLock() {
+  if (document.pointerLockElement === dom.canvas) {
+    document.exitPointerLock?.();
+  }
+}
+
 function setInteractionMode(mode) {
   interactionState.mode = mode;
   controls.enabled = mode === "orbit";
-  dom.canvas.style.cursor = mode === "grab" ? (dragState.active ? "grabbing" : "grab") : "default";
+  dom.canvas.style.cursor =
+    mode === "grab" ? (dragState.active ? "grabbing" : "grab") : mode === "fly" ? "crosshair" : "default";
+  dom.flyMode.classList.toggle("is-active", mode === "fly");
   dom.grabMode.classList.toggle("is-active", mode === "grab");
   dom.orbitMode.classList.toggle("is-active", mode === "orbit");
   dom.controlHint.textContent =
-    mode === "grab"
+    mode === "fly"
+      ? "Click the view to capture the mouse. WASD moves across the layout plane, arrows or R/F move through the layer stack, and the wheel adjusts fly speed."
+      : mode === "grab"
       ? "Drag to move the layout in X/Y. Hold Shift while dragging to push or pull depth."
       : "Left drag orbits around the center-screen hit point, right drag pans, and wheel or trackpad zoom goes toward the pointer.";
+
+  if (mode !== "fly") {
+    exitFlyPointerLock();
+    flyState.activeKeys.clear();
+  } else {
+    syncFlyAnglesFromCamera();
+    applyFlyLook();
+  }
 
   if (mode === "orbit") {
     retargetOrbitPivot();
   }
+
+  updateFlyHud();
 }
 
 function translateView(delta) {
   camera.position.add(delta);
-  controls.target.add(delta);
-  controls.update();
+  if (interactionState.mode === "fly") {
+    applyFlyLook();
+  } else {
+    controls.target.add(delta);
+    controls.update();
+  }
 }
 
 function moveViewFromDrag(deltaX, deltaY, depthOnly) {
@@ -332,6 +418,49 @@ function moveViewFromDrag(deltaX, deltaY, depthOnly) {
   translateView(translationDelta);
 }
 
+function adjustFlySpeed(deltaY) {
+  const multiplier = deltaY > 0 ? 0.88 : 1.14;
+  flyState.speed = THREE.MathUtils.clamp(flyState.speed * multiplier, 6, 1600);
+  updateFlyHud();
+}
+
+function updateFlyMovement(deltaSeconds) {
+  if (interactionState.mode !== "fly") {
+    return;
+  }
+
+  flyDirection.set(0, 0, 0);
+  planarForward.set(-Math.sin(flyState.yaw), 0, -Math.cos(flyState.yaw));
+  planarRight.set(Math.cos(flyState.yaw), 0, -Math.sin(flyState.yaw));
+
+  if (flyState.activeKeys.has("KeyW")) {
+    flyDirection.add(planarForward);
+  }
+  if (flyState.activeKeys.has("KeyS")) {
+    flyDirection.sub(planarForward);
+  }
+  if (flyState.activeKeys.has("KeyD")) {
+    flyDirection.add(planarRight);
+  }
+  if (flyState.activeKeys.has("KeyA")) {
+    flyDirection.sub(planarRight);
+  }
+  if (flyState.activeKeys.has("ArrowUp") || flyState.activeKeys.has("KeyR")) {
+    flyDirection.add(worldUp);
+  }
+  if (flyState.activeKeys.has("ArrowDown") || flyState.activeKeys.has("KeyF")) {
+    flyDirection.sub(worldUp);
+  }
+
+  if (flyDirection.lengthSq() < 1e-7) {
+    return;
+  }
+
+  flyDirection.normalize();
+  const speedMultiplier = flyState.activeKeys.has("ShiftLeft") || flyState.activeKeys.has("ShiftRight") ? 2.6 : 1;
+  translateView(flyDirection.multiplyScalar(flyState.speed * speedMultiplier * deltaSeconds));
+}
+
 function fitCameraToObject(object) {
   const box = new THREE.Box3().setFromObject(object);
   if (box.isEmpty()) {
@@ -345,7 +474,15 @@ function fitCameraToObject(object) {
 
   camera.position.set(center.x + distance * 0.96, center.y + distance * 0.72, center.z + distance * 0.88);
   controls.target.copy(center);
-  controls.update();
+  camera.lookAt(center);
+  flyState.speed = THREE.MathUtils.clamp(maxSize * 0.18, 12, 420);
+  syncFlyAnglesFromCamera();
+  if (interactionState.mode === "fly") {
+    applyFlyLook();
+  } else {
+    controls.update();
+  }
+  updateFlyHud();
 }
 
 function getOrbitableObjects() {
@@ -800,6 +937,10 @@ document.addEventListener("pointerdown", (event) => {
   }
 });
 
+dom.flyMode.addEventListener("click", () => {
+  setInteractionMode("fly");
+});
+
 dom.grabMode.addEventListener("click", () => {
   setInteractionMode("grab");
 });
@@ -809,6 +950,10 @@ dom.orbitMode.addEventListener("click", () => {
 });
 
 dom.canvas.addEventListener("pointerdown", (event) => {
+  if (interactionState.mode === "fly" && event.button === 0) {
+    requestFlyPointerLock();
+    return;
+  }
   if (interactionState.mode !== "grab" || event.button !== 0) {
     return;
   }
@@ -827,6 +972,17 @@ dom.canvas.addEventListener("pointerdown", (event) => {
 });
 
 dom.canvas.addEventListener("pointermove", (event) => {
+  if (interactionState.mode === "fly" && flyState.pointerLocked) {
+    const sensitivity = 0.0022;
+    flyState.yaw -= event.movementX * sensitivity;
+    flyState.pitch = THREE.MathUtils.clamp(
+      flyState.pitch - event.movementY * sensitivity,
+      -Math.PI / 2 + 0.02,
+      Math.PI / 2 - 0.02
+    );
+    applyFlyLook();
+    return;
+  }
   if (interactionState.mode !== "grab" || !dragState.active || dragState.pointerId !== event.pointerId) {
     return;
   }
@@ -852,6 +1008,51 @@ function stopGrab(event) {
 dom.canvas.addEventListener("pointerup", stopGrab);
 dom.canvas.addEventListener("pointercancel", stopGrab);
 
+dom.canvas.addEventListener(
+  "wheel",
+  (event) => {
+    if (interactionState.mode !== "fly") {
+      return;
+    }
+    event.preventDefault();
+    adjustFlySpeed(event.deltaY);
+  },
+  { passive: false }
+);
+
+document.addEventListener("pointerlockchange", () => {
+  flyState.pointerLocked = document.pointerLockElement === dom.canvas;
+  if (!flyState.pointerLocked) {
+    flyState.activeKeys.clear();
+  }
+  updateFlyHud();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!FLY_KEYS.has(event.code)) {
+    return;
+  }
+  if (interactionState.mode !== "fly") {
+    return;
+  }
+  if (!flyState.pointerLocked && !["ShiftLeft", "ShiftRight"].includes(event.code)) {
+    return;
+  }
+  flyState.activeKeys.add(event.code);
+  event.preventDefault();
+});
+
+document.addEventListener("keyup", (event) => {
+  if (!FLY_KEYS.has(event.code)) {
+    return;
+  }
+  flyState.activeKeys.delete(event.code);
+});
+
+window.addEventListener("blur", () => {
+  flyState.activeKeys.clear();
+});
+
 function handleResize() {
   const { clientWidth, clientHeight } = dom.canvas.parentElement;
   camera.aspect = clientWidth / clientHeight;
@@ -863,12 +1064,16 @@ window.addEventListener("resize", handleResize);
 
 buildDatasetControls();
 handleResize();
-setInteractionMode("grab");
+setInteractionMode("fly");
 setLoadProgress("Preparing viewer...", null, { indeterminate: true });
 loadDataset("cw-top");
 
 function animate() {
-  controls.update();
+  const deltaSeconds = Math.min(clock.getDelta(), 0.05);
+  updateFlyMovement(deltaSeconds);
+  if (interactionState.mode === "orbit") {
+    controls.update();
+  }
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }

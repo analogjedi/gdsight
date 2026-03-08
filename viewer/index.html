@@ -28,6 +28,7 @@
           </label>
           <div id="dataset-buttons" class="chip-grid"></div>
           <div class="mode-toggle" role="group" aria-label="Interaction mode">
+            <button id="fly-mode" class="mode-button" type="button">Fly</button>
             <button id="grab-mode" class="mode-button" type="button">Grab</button>
             <button id="orbit-mode" class="mode-button" type="button">Orbit</button>
           </div>
@@ -103,9 +104,9 @@
         </div>
         <canvas id="scene"></canvas>
         <div class="hud">
-          <span>Grab: drag XY</span>
-          <span>Grab depth: Shift + drag</span>
-          <span>Quest path: world grab analogue</span>
+          <span id="hud-primary">Fly: click view to capture mouse</span>
+          <span id="hud-secondary">WASD move, arrows change height, wheel sets speed</span>
+          <span id="hud-tertiary">Speed 80 um/s</span>
         </div>
       </main>
     </div>
